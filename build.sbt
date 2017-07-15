@@ -28,3 +28,4 @@ libraryDependencies += "com.jsuereth" % "scala-arm_2.11" % "2.0"
 
 libraryDependencies += "org.apache.spark" % "spark-sql-kafka-0-10_2.11" % "2.1.1" % "provided"
 
+libraryDependencies += "com.google.code.gson" % "gson" % "2.8.1"
