@@ -17,8 +17,6 @@ object StructuredKafkaStreaming {
 
     import spark.implicits._
 
-    val dictionary = Seq(Country("key", "Russia"), Country("2", "Germany"), Country("key", "USA")).toDS
-
     // Subscribe to 1 topic
     val ds1 = spark
       .readStream
@@ -29,12 +27,14 @@ object StructuredKafkaStreaming {
       .load()
     val stringDS = ds1.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
       .as[(String, String)]
-      .join(dictionary, "key")
+//      .join(dictionary, "key")
 
-//    val gson = new Gson()
-//    val userStatDS = stringDS.map(row => gson.fromJson(row._2, UserStat.getClass) )
+    implicit val myObjEncoder = org.apache.spark.sql.Encoders.kryo[UserStat.type ]
+
+    val gson = new Gson()
+    val userStatDS = stringDS.map {row => gson.fromJson(row._2, UserStat.getClass) } (myObjEncoder)
     // Start running the query that prints the running counts to the console
-    val query = stringDS.writeStream
+    val query = userStatDS.writeStream
       .outputMode("append")
       .format("console")
 //      .option("path", "results")
@@ -44,6 +44,4 @@ object StructuredKafkaStreaming {
     query.awaitTermination()
 
   }
-
-  case class Country(key: String, country: String)
 }
