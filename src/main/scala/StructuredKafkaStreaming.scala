@@ -1,6 +1,5 @@
 import com.google.gson.Gson
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.types.StructType
 
 /**
   * Created by yury on 08.07.17.
@@ -15,9 +14,6 @@ object StructuredKafkaStreaming {
 
     spark.sparkContext.setLogLevel("ERROR")
 
-    import spark.implicits._
-
-    // Subscribe to 1 topic
     val ds1 = spark
       .readStream
       .format("kafka")
@@ -25,42 +21,32 @@ object StructuredKafkaStreaming {
       .option("startingOffsets", "earliest")
       .option("subscribe", "test")
       .load()
-//    val stringDS = ds1.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-//      .as[(String, String)]
 
-    spark.udf.register("deserialize", (value: Array[Byte]) => UserStatDeserializerWrapper.deser.deserialize(value))
+    spark.udf.register("deserialize", (value: Array[Byte]) => GsonHolder.gson.fromJson(new String(value), classOf[UserStat]))
 
-    val userStatDS = ds1.select("value").selectExpr("""deserialize(value) AS data""")//.as[UserStat]
+    val userStatDS = ds1.select("value").selectExpr("""deserialize(value) AS data""")
 
-//    import org.apache.spark.sql.catalyst.ScalaReflection
-//    val schema = ScalaReflection.schemaFor[UserStat].dataType.asInstanceOf[StructType]
+    userStatDS.printSchema()
 
-//    spark.createDataFrame(userStatDS, schema)
-//    implicit val myObjEncoder = org.apache.spark.sql.Encoders.kryo[UserStat ]
-//
-//    val userStatDS = stringDS.map {row => new Gson().fromJson(row._2, classOf[UserStat]) } (myObjEncoder)
-    // Start running the query that prints the running counts to the console
-    val query = userStatDS.writeStream
-      .outputMode("append")
-      .format("console")
-//      .option("path", "results")
-//      .option("checkpointLocation", "checkpoints")
+    val flattened = userStatDS.select("data.*").withWatermark("time", "10 minutes")
+
+    flattened.printSchema()
+    flattened.createOrReplaceTempView("userstat")
+
+    val brClicks = spark.sql("select time, browser, sum(clicks) as clicks from userstat group by browser, time")
+
+    val query = brClicks.select("browser", "clicks")
+      .writeStream
+      .format("parquet")
+      .option("path", "results")
+      .option("checkpointLocation", "checkpoints")
       .start()
 
     query.awaitTermination()
 
   }
 
-  object UserStatDeserializerWrapper {
-    val deser = new UserStatDeserializer
-  }
-
-  class UserStatDeserializer (){
-
-    def deserialize (value: Array[Byte]): UserStat = {
-      println(new String(value))
-      val gson = new Gson()
-      gson.fromJson(new String(value), classOf[UserStat])
-    }
+  object GsonHolder {
+    val gson = new Gson
   }
 }
