@@ -33,13 +33,15 @@ object StructuredKafkaStreaming {
     flattened.printSchema()
     flattened.createOrReplaceTempView("userstat")
 
-    val brClicks = spark.sql("select time, browser, sum(clicks) as clicks from userstat group by browser, time")
+    val brClicks = spark.sql("select first_value(time), browser, sum(clicks) as clicks from userstat group by browser, time")
 
     val query = brClicks.select("browser", "clicks")
       .writeStream
-      .format("parquet")
-      .option("path", "results")
-      .option("checkpointLocation", "checkpoints")
+      .outputMode("complete")
+      .foreach(PostgreSqlWriter)
+//      .format("console")
+//      .option("path", "results")
+//      .option("checkpointLocation", "checkpoints")
       .start()
 
     query.awaitTermination()
